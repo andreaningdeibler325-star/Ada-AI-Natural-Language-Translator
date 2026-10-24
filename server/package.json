@@ -1,15 +1,15 @@
+
 {
-  "name": "server",
+  "name": "adas-ai-natural-language-translator-server",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Backend for Ada's AI Natural Language Translator",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "tsx src/server.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "cors": "^2.8.6",
