@@ -18,7 +18,7 @@
 
 /* ---------- 1. Configuration ---------- */
 
-const API_ENDPOINT = "http://localhost:3001/api/translate";
+const API_ENDPOINT = "/api/translate";
 const USE_PLACEHOLDER = false;
 let translationBusy = false;
 let operationVersion = 0;
