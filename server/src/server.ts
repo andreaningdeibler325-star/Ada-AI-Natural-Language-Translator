@@ -9,7 +9,6 @@ const app = express();
 const PORT = Number(process.env.PORT || 3001);
 
 // Frontend files are in the repository root.
-// Render will use "server" as its Root Directory.
 const frontendDir = path.resolve(process.cwd(), "..");
 
 app.disable("x-powered-by");
