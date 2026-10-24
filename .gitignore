@@ -1,0 +1,17 @@
+# OpenAI API keys and environment files
+.env
+.env.*
+!.env.example
+
+# Node.js dependencies
+node_modules/
+
+# Generated build folders
+dist/
+build/
+
+# Log files
+*.log
+
+# Windows temporary files
+Thumbs.db

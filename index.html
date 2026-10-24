@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ada's AI Natural Language Translator</title>
+  <meta name="description" content="AI-powered text and voice translation." />
+  <link rel="stylesheet" href="style.css?v=small-stop-20261023" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1 class="site-title">Ada's AI Natural Language Translator</h1>
+      <p class="site-subtitle">Translate text or speech in just a few steps.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel" aria-labelledby="input-heading">
+      <div class="lang-row">
+        <div class="field">
+          <label for="sourceLanguage">Source language</label>
+          <select id="sourceLanguage">
+            <option value="auto" selected>Auto Detect</option>
+          </select>
+        </div>
+
+        <button type="button" id="swapBtn" class="btn btn-icon" aria-label="Swap languages" title="Swap languages">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 4 3 8l4 4" /><path d="M3 8h14" />
+            <path d="m17 20 4-4-4-4" /><path d="M21 16H7" />
+          </svg>
+        </button>
+
+        <div class="field">
+          <label for="targetLanguage">Translate to</label>
+          <select id="targetLanguage"></select>
+        </div>
+      </div>
+
+      <div class="field field-tone">
+        <label for="tone">Tone</label>
+        <select id="tone">
+          <option value="natural" selected>Natural</option>
+          <option value="professional">Professional</option>
+          <option value="formal">Formal</option>
+          <option value="friendly">Friendly</option>
+          <option value="academic">Academic</option>
+          <option value="conversational">Conversational</option>
+        </select>
+      </div>
+
+      <div class="input-mode-section" aria-labelledby="input-mode-heading">
+        <p id="input-mode-heading" class="input-mode-heading">Choose an input method</p>
+        <div class="input-mode-choices" role="group" aria-label="Input method">
+          <div id="textModeCard" class="input-mode-card is-selected">
+            <button type="button" id="textModeBtn" class="btn input-mode-button" aria-pressed="true" aria-controls="inputPanel">
+              <span aria-hidden="true">⌨️</span> Enter Text
+            </button>
+          </div>
+
+          <div id="speakModeCard" class="input-mode-card">
+            <button type="button" id="speakTabBtn" class="btn input-mode-button" aria-pressed="false" aria-controls="inputPanel" aria-label="Start Speaking" title="Start voice-to-text recognition">
+              <svg id="voiceButtonIcon" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"/></svg>
+              <span id="speakButtonLabel">Start Speaking</span>
+            </button>
+            <button type="button" id="stopVoiceBtn" class="btn stop-speech-button" aria-label="Stop voice recognition and edit text" title="Stop listening and edit text" disabled>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+              <span>Stop</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p id="voicePrivacy" class="voice-privacy" hidden>
+        Your browser may process speech using an online recognition service. Review or edit recognized text before translating. Select Clear to discard it.
+      </p>
+
+      <div id="inputPanel" class="field input-panel">
+        <textarea id="inputText" rows="6" maxlength="10000" aria-label="Text to translate" placeholder="Type or paste text to translate…"></textarea>
+        <div class="counter-row">
+          <span class="counter">Characters: <span id="charCount">0</span> / <span id="charMax">10000</span></span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="clearBtn" class="btn btn-secondary">Clear</button>
+        <button type="button" id="translateBtn" class="btn btn-primary"><span aria-hidden="true">🌐</span> Translate</button>
+      </div>
+
+      <p id="status" class="status" data-state="idle" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel panel-result" aria-labelledby="result-heading">
+      <h2 id="result-heading" class="panel-title">Translation</h2>
+      <div id="outputText" class="output" tabindex="0" aria-label="Translation result">
+        <span class="output-placeholder">Your translation will appear here.</span>
+      </div>
+
+      <dl class="meta">
+        <div>
+          <dt>Detected language</dt>
+          <dd id="detectedLanguage">-</dd>
+        </div>
+        <div>
+          <dt>Target language</dt>
+          <dd id="targetLanguageLabel">-</dd>
+        </div>
+      </dl>
+
+      <div class="actions actions-start">
+        <button type="button" id="copyBtn" class="btn btn-secondary" disabled>Copy translation</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      AI-powered text and voice translation. Please review translations before relying on them.
+    </div>
+  </footer>
+
+  <script src="app.js?v=small-stop-20261023"></script>
+  <script src="voice-input.js?v=small-stop-20261023"></script>
+  <script>
+    // Move keyboard focus to the source text area when Enter Text is selected.
+    document.getElementById('textModeBtn').addEventListener('click', () => {
+      const input = document.getElementById('inputText');
+      requestAnimationFrame(() => {
+        input.focus({ preventScroll: true });
+        // Place the insertion point at the end of any existing text.
+        input.setSelectionRange(input.value.length, input.value.length);
+        input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    });
+  </script>
+</body>
+</html>
