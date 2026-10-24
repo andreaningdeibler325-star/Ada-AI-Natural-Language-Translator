@@ -195,13 +195,23 @@ app.use((
   });
 });
 
-// -------- FRONTEND --------
+const publicFiles = [
+  "index.html",
+  "style.css",
+  "app.js",
+  "voice-input.js"
+];
 
-app.use(express.static(frontendDir));
+for (const filename of publicFiles) {
+  app.get(`/${filename}`, (_req, res) => {
+    res.sendFile(path.join(frontendDir, filename));
+  });
+}
 
 app.get("/", (_req, res) => {
   res.sendFile(path.join(frontendDir, "index.html"));
 });
+
 
 // -------- START SERVER --------
 
