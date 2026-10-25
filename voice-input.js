@@ -345,6 +345,13 @@
     const currentNumber = ++sessionNumber;
     const session = new Recognition();
 
+    
+    const session = new Recognition();
+    // Enable built-in punctuation when supported
+    if ("unspokenPunctuation" in session) {
+    session.unspokenPunctuation = true;
+    }
+
     recognition = session;
 
     session.lang =
