@@ -1,10 +1,7 @@
 
 /*
-  Ada's AI Natural Language Translator
-  voice-input.js
-
-  Browser speech recognition for desktop and mobile.
-  This file contains no API keys.
+ Ada's AI Natural Language Translator
+ Voice recognition + automatic punctuation
 */
 
 (() => {
@@ -23,14 +20,7 @@
   const voiceCard = get("speakModeCard");
   const privacy = get("voicePrivacy");
 
-  if (!speakButton || !input) {
-    console.warn(
-      "NLT voice: required HTML elements are missing."
-    );
-    return;
-  }
-
-  // 1. Browser speech-recognition support
+  if (!speakButton || !input) return;
 
   const SpeechRecognition =
     window.SpeechRecognition ||
@@ -51,8 +41,6 @@
     hi: "hi-IN",
     ru: "ru-RU"
   };
-
-  // 2. Browser-specific configuration
 
   function settings() {
     const ua = navigator.userAgent || "";
@@ -95,8 +83,6 @@
   const MAX_SILENT_SESSIONS = 3;
   const STOP_TIMEOUT_MS = 3000;
 
-  // 3. Recognition state
-
   let recognition = null;
   let listening = false;
   let stopping = false;
@@ -114,7 +100,12 @@
   let finishPromise = null;
   let resolveFinish = null;
 
-  // 4. Update status display
+  // Automatic punctuation state
+
+  let punctuationNeeded = false;
+  let punctuationPromise = null;
+  let punctuationVersion = 0;
+  let polishing = false;
 
   function setStatus(text, state = "idle") {
     if (!status) return;
@@ -123,13 +114,12 @@
     status.dataset.state = state;
   }
 
-  // 5. Update Start / Stop controls
-
   function updateButtons() {
     speakButton.disabled =
       locked ||
       listening ||
       stopping ||
+      polishing ||
       !SpeechRecognition;
 
     speakButton.setAttribute(
@@ -151,15 +141,13 @@
 
     if (stopButton) {
       stopButton.disabled =
-        locked || !listening || stopping;
+        locked || !listening || stopping || polishing;
     }
 
-    if (textButton) {
-      textButton.setAttribute(
-        "aria-pressed",
-        String(!listening)
-      );
-    }
+    textButton?.setAttribute(
+      "aria-pressed",
+      String(!listening)
+    );
 
     voiceCard?.classList.toggle(
       "is-listening",
@@ -177,7 +165,7 @@
     );
   }
 
-  // 6. Join text fragments
+  // Join recognized fragments
 
   function joinText(...parts) {
     return parts.reduce((result, part) => {
@@ -194,10 +182,7 @@
     }, "");
   }
 
-  // 7. Remove overlapping phrases across sessions
-  //
-  // Do not remove intentional repeated words
-  // within a single recognition session.
+  // Handle overlapping browser sessions
 
   function appendSession(previous, next) {
     const a = String(previous || "").trim();
@@ -205,8 +190,6 @@
 
     if (!a) return b;
     if (!b) return a;
-
-    // Chinese, Japanese, Korean text without spaces
 
     if (!/\s/u.test(a + b) && CJK.test(a + b)) {
       for (
@@ -222,8 +205,6 @@
       return joinText(a, b);
     }
 
-    // Languages that use spaces between words
-
     const left = a.split(/\s+/u);
     const right = b.split(/\s+/u);
 
@@ -233,22 +214,19 @@
         ""
       );
 
-    // Check for overlapping phrases
-    // of at least two words.
-
     for (
       let n = Math.min(left.length, right.length);
       n >= 2;
       n--
     ) {
-      const match = left
+      const matching = left
         .slice(-n)
         .every(
           (word, i) =>
             clean(word) === clean(right[i])
         );
 
-      if (match) {
+      if (matching) {
         return joinText(
           a,
           right.slice(n).join(" ")
@@ -259,16 +237,9 @@
     return joinText(a, b);
   }
 
-  // 8. Current recognition session
-
   function currentSessionText() {
-    return joinText(
-      sessionFinal,
-      sessionInterim
-    );
+    return joinText(sessionFinal, sessionInterim);
   }
-
-  // 9. Display transcription
 
   function renderText() {
     const transcript = appendSession(
@@ -303,13 +274,7 @@
     }
   }
 
-  // 10. Commit final and interim speech
-
   function commitSession() {
-    // Important Android fix:
-    // preserve words even when the browser
-    // did not mark the last result as final.
-
     completedText = appendSession(
       completedText,
       currentSessionText()
@@ -320,8 +285,6 @@
 
     renderText();
   }
-
-  // 11. Timer helpers
 
   function clearRestart() {
     if (restartTimer !== null) {
@@ -338,8 +301,6 @@
 
     stopTimer = null;
   }
-
-  // 12. Complete a Stop operation
 
   function completeStop(success) {
     clearStopTimer();
@@ -359,7 +320,7 @@
     }
   }
 
-  // 13. Start a recognition session
+  // Start the browser speech-recognition session
 
   function startSession() {
     if (
@@ -401,16 +362,8 @@
     session.interimResults = true;
     session.maxAlternatives = 1;
 
-    // Do not enable experimental
-    // unspokenPunctuation here.
-
-    // 14. Microphone begins listening
-
     session.onstart = () => {
-      if (
-        recognition === session &&
-        listening
-      ) {
+      if (recognition === session && listening) {
         setStatus(
           "Listening… Speak naturally, then tap Stop.",
           "loading"
@@ -418,19 +371,11 @@
       }
     };
 
-    // 15. Handle transcription results
-
     session.onresult = event => {
-      if (recognition !== session) {
-        return;
-      }
+      if (recognition !== session) return;
 
       const finals = [];
       const interims = [];
-
-      // Reconstruct the current session.
-      // Do not repeatedly append the entire
-      // browser result list.
 
       for (
         let i = 0;
@@ -457,12 +402,11 @@
 
       if (sessionFinal || sessionInterim) {
         silentSessions = 0;
+        punctuationNeeded = true;
       }
 
       renderText();
     };
-
-    // 16. Handle microphone errors
 
     session.onerror = event => {
       if (recognition !== session) return;
@@ -497,15 +441,9 @@
         "error"
       );
 
-      // Do not automatically restart
-      // after a microphone or service error.
-
       listening = false;
-
       updateButtons();
     };
-
-    // 17. Handle session ending
 
     session.onend = () => {
       if (recognition !== session) return;
@@ -528,8 +466,6 @@
         return;
       }
 
-      // Browsers that require manual restart
-
       if (!config.autoRestart) {
         listening = false;
         updateButtons();
@@ -540,9 +476,6 @@
 
         return;
       }
-
-      // Prevent endless restarts
-      // when no speech is detected.
 
       silentSessions = heardSpeech
         ? 0
@@ -574,8 +507,6 @@
       }, config.restartDelay);
     };
 
-    // 18. Activate recognition
-
     try {
       session.start();
     } catch (error) {
@@ -591,16 +522,8 @@
     }
   }
 
-  // 19. Start Speaking button
-
   function startSpeaking() {
-    if (
-      locked ||
-      listening ||
-      stopping
-    ) {
-      return;
-    }
+    if (locked || listening || stopping) return;
 
     if (!SpeechRecognition) {
       setStatus(
@@ -613,8 +536,10 @@
 
     clearRestart();
 
-    baseText = input.value;
+    punctuationVersion++;
+    punctuationNeeded = false;
 
+    baseText = input.value;
     completedText = "";
     sessionFinal = "";
     sessionInterim = "";
@@ -632,12 +557,10 @@
     startSession();
   }
 
-  // 20. Stop before translating
+  // Stop browser recognition
 
   function finishBeforeTranslate() {
-    if (finishPromise) {
-      return finishPromise;
-    }
+    if (finishPromise) return finishPromise;
 
     if (
       !listening &&
@@ -674,13 +597,9 @@
       completeStop(true);
     }
 
-    // Some browsers fail to fire onend.
-    // Do not leave Translate waiting forever.
-
     if (stopping) {
       stopTimer = setTimeout(() => {
         const old = recognition;
-
         recognition = null;
 
         if (old) {
@@ -698,9 +617,206 @@
       Promise.resolve(true);
   }
 
-  // 21. Cancel voice recognition
+  // Basic punctuation if the AI service
+  // is temporarily unavailable
+
+  function simplePunctuation(raw) {
+    let value = String(raw || "").trim();
+
+    if (!value) return value;
+
+    value = value.replace(
+      /^(\p{Ll})/u,
+      first => first.toLocaleUpperCase()
+    );
+
+    if (!/[.!?。！？]$/u.test(value)) {
+      const lang = source?.value || "auto";
+
+      value += (
+        lang === "zh" ||
+        lang === "yue" ||
+        lang === "ja"
+      ) ? "。" : ".";
+    }
+
+    return value;
+  }
+
+  // Verify that the punctuation model
+  // has preserved the recognized words
+
+  function sameWords(before, after) {
+    const normalize = value =>
+      String(value || "")
+        .normalize("NFKC")
+        .toLocaleLowerCase()
+        .replace(/[\p{P}\p{S}\s]/gu, "");
+
+    return normalize(before) === normalize(after);
+  }
+
+  // Automatic punctuation after Stop
+
+  async function punctuateAfterStop() {
+    if (punctuationPromise) {
+      return punctuationPromise;
+    }
+
+    if (
+      !punctuationNeeded ||
+      !completedText.trim()
+    ) {
+      return;
+    }
+
+    const version = punctuationVersion;
+    const raw = completedText.trim();
+
+    const expectedOriginal = baseText + (
+      baseText.trim() &&
+      raw &&
+      !baseText.endsWith("\n")
+        ? "\n"
+        : ""
+    ) + raw;
+
+    punctuationNeeded = false;
+
+    const limit =
+      input.maxLength > 0
+        ? input.maxLength
+        : 10000;
+
+    // Never overwrite text the user edited
+
+    if (
+      input.value !==
+      expectedOriginal.slice(0, limit)
+    ) {
+      return;
+    }
+
+    const expected = input.value;
+
+    polishing = true;
+    updateButtons();
+
+    setStatus(
+      "Adding punctuation…",
+      "loading"
+    );
+
+    punctuationPromise = (async () => {
+      let formatted = "";
+      let usedAI = false;
+
+      try {
+        const controller = new AbortController();
+
+        const timeout = setTimeout(
+          () => controller.abort(),
+          12000
+        );
+
+        let data;
+
+        try {
+          const response = await fetch(
+            "/api/punctuate",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                text: raw,
+                language: source?.value || "auto"
+              }),
+              signal: controller.signal
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(
+              `HTTP ${response.status}`
+            );
+          }
+
+          data = await response.json();
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        const candidate = String(
+          data.text || ""
+        ).trim();
+
+        if (
+          !candidate ||
+          !sameWords(raw, candidate)
+        ) {
+          throw new Error(
+            "Punctuation service changed the recognized words"
+          );
+        }
+
+        formatted = candidate;
+        usedAI = true;
+
+      } catch (error) {
+        console.warn(
+          "NLT punctuation fallback:",
+          error
+        );
+
+        formatted = simplePunctuation(raw);
+      }
+
+      if (
+        version === punctuationVersion &&
+        input.value === expected
+      ) {
+        completedText = formatted;
+        renderText();
+
+        setStatus(
+          usedAI
+            ? "Punctuation added. Review text or tap Translate."
+            : "Basic punctuation added (AI unavailable). Review the text.",
+          usedAI ? "success" : "idle"
+        );
+      }
+    })().finally(() => {
+      if (version === punctuationVersion) {
+        polishing = false;
+        punctuationPromise = null;
+
+        updateButtons();
+      }
+    });
+
+    return punctuationPromise;
+  }
+
+  // Stop recognition, then add punctuation
+
+  async function finishAndPunctuate() {
+    const finished = await finishBeforeTranslate();
+
+    if (!finished) return false;
+
+    await punctuateAfterStop();
+
+    return true;
+  }
 
   function cancelRecording() {
+    punctuationVersion++;
+    punctuationNeeded = false;
+    polishing = false;
+    punctuationPromise = null;
+
     clearRestart();
     clearStopTimer();
 
@@ -708,7 +824,6 @@
     stopping = false;
 
     const old = recognition;
-
     recognition = null;
 
     if (old) {
@@ -727,46 +842,36 @@
     completeStop(false);
   }
 
-  // 22. Connect Start Speaking button
+  // Start Speaking button
 
   speakButton.addEventListener(
     "click",
     startSpeaking
   );
 
-  // 23. Connect Stop button
+  // Stop button
 
   stopButton?.addEventListener(
     "click",
     async () => {
       if (!listening || stopping) return;
 
-      if (await finishBeforeTranslate()) {
-        setStatus(
-          "Voice recognition stopped. Review text or tap Translate.",
-          "success"
-        );
-      }
+      await finishAndPunctuate();
     }
   );
 
-  // 24. Connect Enter Text button
+  // Enter Text button
 
   textButton?.addEventListener(
     "click",
     async () => {
       if (listening || stopping) {
-        await finishBeforeTranslate();
+        await finishAndPunctuate();
       }
-
-      // Move the cursor into the textarea
-      // when the user chooses Enter Text.
 
       input.focus();
     }
   );
-
-  // 25. Show microphone privacy notice
 
   if (privacy) {
     privacy.hidden = false;
@@ -774,10 +879,10 @@
 
   updateButtons();
 
-  // 26. Interface used by app.js
+  // Interface used by app.js
 
   window.nltVoice = {
-    finishBeforeTranslate,
+    finishBeforeTranslate: finishAndPunctuate,
     cancelRecording,
 
     lockModes(value) {
