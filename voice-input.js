@@ -1,34 +1,38 @@
 
 /*
-
   Ada's AI Natural Language Translator
-  Improved voice recognition for mobile and desktop.
+  voice-input.js
 
-  Uses the browser Web Speech API.
-  No API keys are stored in this file.
+  Browser speech recognition for desktop and mobile.
+  This file contains no API keys.
 */
 
 (() => {
   "use strict";
 
-  const byId = id => document.getElementById(id);
+  const get = id => document.getElementById(id);
 
-  const speakButton = byId("speakTabBtn");
-  const textButton = byId("textModeBtn");
-  const stopButton = byId("stopVoiceBtn");
-  const textCard = byId("textModeCard");
-  const voiceCard = byId("speakModeCard");
-  const input = byId("inputText");
-  const source = byId("sourceLanguage");
-  const privacy = byId("voicePrivacy");
-  const status = byId("status");
-  const buttonLabel = byId("speakButtonLabel");
+  const speakButton = get("speakTabBtn");
+  const stopButton = get("stopVoiceBtn");
+  const textButton = get("textModeBtn");
+  const input = get("inputText");
+  const source = get("sourceLanguage");
+  const status = get("status");
+  const label = get("speakButtonLabel");
+  const textCard = get("textModeCard");
+  const voiceCard = get("speakModeCard");
+  const privacy = get("voicePrivacy");
 
-  if (!speakButton || !input) return;
+  if (!speakButton || !input) {
+    console.warn(
+      "NLT voice: required HTML elements are missing."
+    );
+    return;
+  }
 
-  // ---------- 1. Browser recognition support ----------
+  // 1. Browser speech-recognition support
 
-  const Recognition =
+  const SpeechRecognition =
     window.SpeechRecognition ||
     window.webkitSpeechRecognition;
 
@@ -48,83 +52,89 @@
     ru: "ru-RU"
   };
 
-  // ---------- 2. Browser-specific settings ----------
+  // 2. Browser-specific configuration
 
-  function getSpeechSettings() {
+  function settings() {
     const ua = navigator.userAgent || "";
 
-    const platform = /Android/i.test(ua)
+    const device = /Android/i.test(ua)
       ? "android"
       : /iPhone|iPad|iPod/i.test(ua)
       ? "ios"
       : "desktop";
 
-    switch (platform) {
+    switch (device) {
       case "android":
         return {
           continuous: false,
-          interimResults: true,
-          restartDelay: 900,
-          autoRestart: true
+          autoRestart: true,
+          restartDelay: 900
         };
 
       case "ios":
         return {
           continuous: false,
-          interimResults: true,
-          restartDelay: 0,
-          autoRestart: false
+          autoRestart: false,
+          restartDelay: 0
         };
 
       default:
         return {
           continuous: true,
-          interimResults: true,
-          restartDelay: 700,
-          autoRestart: true
+          autoRestart: true,
+          restartDelay: 700
         };
     }
   }
 
-  const config = getSpeechSettings();
+  const config = settings();
 
-  // ---------- 3. Recognition state ----------
+  const CJK =
+    /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/u;
+
+  const MAX_SILENT_SESSIONS = 3;
+  const STOP_TIMEOUT_MS = 3000;
+
+  // 3. Recognition state
 
   let recognition = null;
-  let listeningRequested = false;
+  let listening = false;
+  let stopping = false;
   let locked = false;
 
   let baseText = "";
-  let committedSpeech = "";
-  let finalPart = "";
-  let interimPart = "";
+  let completedText = "";
+  let sessionFinal = "";
+  let sessionInterim = "";
 
+  let silentSessions = 0;
   let restartTimer = null;
-  let sessionNumber = 0;
-  let finishing = false;
-  let finishResolve = null;
+  let stopTimer = null;
 
-  // ---------- 4. Status and buttons ----------
+  let finishPromise = null;
+  let resolveFinish = null;
 
-  function message(text, kind = "idle") {
-    if (status) {
-      status.textContent = text;
-      status.dataset.state = kind;
-    }
+  // 4. Update status display
+
+  function setStatus(text, state = "idle") {
+    if (!status) return;
+
+    status.textContent = text;
+    status.dataset.state = state;
   }
 
-  function updateButton() {
-    speakButton.disabled =
-      locked || listeningRequested || finishing;
+  // 5. Update Start / Stop controls
 
-    if (stopButton) {
-      stopButton.disabled =
-        !listeningRequested || finishing || locked;
-    }
+  function updateButtons() {
+    speakButton.disabled =
+      locked ||
+      listening ||
+      stopping ||
+      !SpeechRecognition;
 
     speakButton.setAttribute(
       "aria-pressed",
-      String(listeningRequested)
+      String(listening)
     );
 
     speakButton.setAttribute(
@@ -132,224 +142,255 @@
       "Start Speaking"
     );
 
-    speakButton.title = listeningRequested
-      ? "Listening until Stop or Translate"
-      : "Start voice-to-text recognition";
+    speakButton.title =
+      "Start voice-to-text recognition";
 
-    if (buttonLabel) {
-      buttonLabel.textContent = "Start Speaking";
+    if (label) {
+      label.textContent = "Start Speaking";
+    }
+
+    if (stopButton) {
+      stopButton.disabled =
+        locked || !listening || stopping;
+    }
+
+    if (textButton) {
+      textButton.setAttribute(
+        "aria-pressed",
+        String(!listening)
+      );
     }
 
     voiceCard?.classList.toggle(
       "is-listening",
-      listeningRequested
+      listening
     );
 
     voiceCard?.classList.toggle(
       "is-selected",
-      listeningRequested
+      listening
     );
 
     textCard?.classList.toggle(
       "is-selected",
-      !listeningRequested
-    );
-
-    textButton?.setAttribute(
-      "aria-pressed",
-      String(!listeningRequested)
+      !listening
     );
   }
 
-  // ---------- 5. Merge overlapping speech ----------
+  // 6. Join text fragments
 
-  function mergeSpeech(previous, next) {
+  function joinText(...parts) {
+    return parts.reduce((result, part) => {
+      const text = String(part || "").trim();
+
+      if (!text) return result;
+      if (!result) return text;
+
+      const last = result[result.length - 1];
+
+      return CJK.test(last) && CJK.test(text[0])
+        ? result + text
+        : result + " " + text;
+    }, "");
+  }
+
+  // 7. Remove overlapping phrases across sessions
+  //
+  // Do not remove intentional repeated words
+  // within a single recognition session.
+
+  function appendSession(previous, next) {
     const a = String(previous || "").trim();
     const b = String(next || "").trim();
 
     if (!a) return b;
     if (!b) return a;
 
-    const normalize = text =>
-      text.toLocaleLowerCase().replace(
-        /[.,!?;:，。！？；：]+$/u,
-        ""
-      );
+    // Chinese, Japanese, Korean text without spaces
 
-    // Handle speech in Chinese, Japanese, or Korean
-    // when the recognized text has no spaces.
-
-    if (
-      !/\s/u.test(a + b) &&
-      /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/u.test(a + b)
-    ) {
-      if (b.startsWith(a)) return b;
-      if (a.endsWith(b)) return a;
-
+    if (!/\s/u.test(a + b) && CJK.test(a + b)) {
       for (
-        let count = Math.min(a.length, b.length);
-        count >= 2;
-        count--
+        let n = Math.min(a.length, b.length);
+        n >= 2;
+        n--
       ) {
-        if (a.endsWith(b.slice(0, count))) {
-          return a + b.slice(count);
+        if (a.slice(-n) === b.slice(0, n)) {
+          return a + b.slice(n);
         }
       }
 
-      return a + b;
+      return joinText(a, b);
     }
+
+    // Languages that use spaces between words
 
     const left = a.split(/\s+/u);
     const right = b.split(/\s+/u);
 
-    const equal = (x, y) =>
-      normalize(x) === normalize(y);
+    const clean = word =>
+      word.toLocaleLowerCase().replace(
+        /[.,!?;:，。！？；：]+$/u,
+        ""
+      );
 
-    // If the new result extends the previous one,
-    // use the newer complete version.
-
-    if (
-      left.length <= right.length &&
-      left.every((word, i) => equal(word, right[i]))
-    ) {
-      return b;
-    }
-
-    // If the new result repeats the ending
-    // of a previous result, do not append it.
-
-    if (
-      right.length <= left.length &&
-      right.every((word, i) =>
-        equal(
-          word,
-          left[left.length - right.length + i]
-        )
-      )
-    ) {
-      return a;
-    }
-
-    // Remove overlapping words between sessions.
-    // Avoid aggressive single-word merging so that
-    // intentional repetitions can still be recognized.
+    // Check for overlapping phrases
+    // of at least two words.
 
     for (
       let n = Math.min(left.length, right.length);
-      n >= 1;
+      n >= 2;
       n--
     ) {
-      if (
-        n === 1 &&
-        left.length > 1 &&
-        right.length > 1
-      ) {
-        continue;
-      }
-
-      const matching = left
+      const match = left
         .slice(-n)
-        .every((word, i) => equal(word, right[i]));
+        .every(
+          (word, i) =>
+            clean(word) === clean(right[i])
+        );
 
-      if (matching) {
-        return (
-          a + " " + right.slice(n).join(" ")
-        ).trim();
+      if (match) {
+        return joinText(
+          a,
+          right.slice(n).join(" ")
+        );
       }
     }
 
-    return `${a} ${b}`;
+    return joinText(a, b);
   }
 
-  // ---------- 6. Display speech in textarea ----------
+  // 8. Current recognition session
+
+  function currentSessionText() {
+    return joinText(
+      sessionFinal,
+      sessionInterim
+    );
+  }
+
+  // 9. Display transcription
 
   function renderText() {
-    const speech = mergeSpeech(
-      mergeSpeech(committedSpeech, finalPart),
-      interimPart
+    const transcript = appendSession(
+      completedText,
+      currentSessionText()
     );
 
     const separator =
-      baseText.trim() && speech
+      baseText.trim() && transcript
         ? baseText.endsWith("\n")
           ? ""
           : "\n"
         : "";
 
-    const max =
+    const limit =
       input.maxLength > 0
         ? input.maxLength
         : 10000;
 
-    input.value = (
-      baseText + separator + speech
-    ).slice(0, max);
+    const next = (
+      baseText + separator + transcript
+    ).slice(0, limit);
 
-    input.dispatchEvent(
-      new Event("input", { bubbles: true })
-    );
-  }
+    if (input.value !== next) {
+      input.value = next;
 
-  function clearTimer() {
-    if (restartTimer !== null) {
-      clearTimeout(restartTimer);
-      restartTimer = null;
+      input.dispatchEvent(
+        new Event("input", {
+          bubbles: true
+        })
+      );
     }
   }
 
-  function settleFinish(ok) {
-    if (finishResolve) {
-      const resolve = finishResolve;
-      finishResolve = null;
-      resolve(ok);
-    }
-  }
+  // 10. Commit final and interim speech
 
-  function commitCurrentSession() {
-    // Save only final recognized words.
-    // Interim words may change while speaking.
+  function commitSession() {
+    // Important Android fix:
+    // preserve words even when the browser
+    // did not mark the last result as final.
 
-    committedSpeech = mergeSpeech(
-      committedSpeech,
-      finalPart
+    completedText = appendSession(
+      completedText,
+      currentSessionText()
     );
 
-    finalPart = "";
-    interimPart = "";
+    sessionFinal = "";
+    sessionInterim = "";
 
     renderText();
   }
 
-  // ---------- 7. Start recognition session ----------
+  // 11. Timer helpers
+
+  function clearRestart() {
+    if (restartTimer !== null) {
+      clearTimeout(restartTimer);
+    }
+
+    restartTimer = null;
+  }
+
+  function clearStopTimer() {
+    if (stopTimer !== null) {
+      clearTimeout(stopTimer);
+    }
+
+    stopTimer = null;
+  }
+
+  // 12. Complete a Stop operation
+
+  function completeStop(success) {
+    clearStopTimer();
+
+    stopping = false;
+    listening = false;
+
+    updateButtons();
+
+    if (resolveFinish) {
+      const done = resolveFinish;
+
+      resolveFinish = null;
+      finishPromise = null;
+
+      done(success);
+    }
+  }
+
+  // 13. Start a recognition session
 
   function startSession() {
     if (
-      !listeningRequested ||
-      finishing ||
-      recognition
+      !listening ||
+      stopping ||
+      recognition ||
+      !SpeechRecognition
     ) {
       return;
     }
 
-    if (!Recognition) {
-      listeningRequested = false;
-      updateButton();
+    let session;
 
-      message(
-        "Speech recognition is unavailable. Try Chrome or Edge.",
+    try {
+      session = new SpeechRecognition();
+    } catch (error) {
+      listening = false;
+      updateButtons();
+
+      setStatus(
+        `Could not open voice recognition: ${error.message}`,
         "error"
       );
+
       return;
     }
 
-    const currentNumber = ++sessionNumber;
-    const session = new Recognition();
-
-    
-    const session = new Recognition();
-    
-
     recognition = session;
+
+    sessionFinal = "";
+    sessionInterim = "";
 
     session.lang =
       source?.value === "auto"
@@ -357,325 +398,383 @@
         : locales[source?.value] || "en-US";
 
     session.continuous = config.continuous;
-    session.interimResults = config.interimResults;
+    session.interimResults = true;
     session.maxAlternatives = 1;
 
-    finalPart = "";
-    interimPart = "";
+    // Do not enable experimental
+    // unspokenPunctuation here.
+
+    // 14. Microphone begins listening
 
     session.onstart = () => {
       if (
         recognition === session &&
-        listeningRequested
+        listening
       ) {
-        message(
-          "Listening… Speak naturally. Click Stop or Translate when finished.",
+        setStatus(
+          "Listening… Speak naturally, then tap Stop.",
           "loading"
         );
       }
     };
 
-    // ---------- 8. Process recognition results ----------
+    // 15. Handle transcription results
 
     session.onresult = event => {
-      if (
-        recognition !== session ||
-        currentNumber !== sessionNumber
-      ) {
+      if (recognition !== session) {
         return;
       }
 
-      let finals = "";
-      let interims = "";
+      const finals = [];
+      const interims = [];
 
-      // Reconstruct the current session results.
-      // Do not append the entire result list again
-      // every time the browser fires onresult.
+      // Reconstruct the current session.
+      // Do not repeatedly append the entire
+      // browser result list.
 
       for (
         let i = 0;
         i < event.results.length;
         i++
       ) {
-        const value = (
-          event.results[i][0]?.transcript || ""
+        const result = event.results[i];
+
+        const words = (
+          result[0]?.transcript || ""
         ).trim();
 
-        if (!value) continue;
+        if (!words) continue;
 
-        if (event.results[i].isFinal) {
-          finals = mergeSpeech(finals, value);
+        if (result.isFinal) {
+          finals.push(words);
         } else {
-          interims = mergeSpeech(interims, value);
+          interims.push(words);
         }
       }
 
-      finalPart = finals;
-      interimPart = interims;
+      sessionFinal = joinText(...finals);
+      sessionInterim = joinText(...interims);
+
+      if (sessionFinal || sessionInterim) {
+        silentSessions = 0;
+      }
 
       renderText();
     };
 
-    // ---------- 9. Recognition errors ----------
+    // 16. Handle microphone errors
 
     session.onerror = event => {
       if (recognition !== session) return;
 
-      if (event.error === "no-speech") {
+      if (
+        event.error === "no-speech" ||
+        event.error === "aborted"
+      ) {
         return;
       }
 
-      const problems = {
+      const errors = {
         "not-allowed":
-          "Microphone permission denied. Allow microphone access in browser settings.",
+          "Microphone blocked. Allow access in browser settings.",
 
         "service-not-allowed":
-          "The browser blocked the speech-recognition service.",
+          "The browser blocked its speech service.",
 
         "audio-capture":
-          "No working microphone was found.",
+          "Microphone not available.",
 
-        "network":
-          "Speech recognition has a network problem. Check your connection.",
+        network:
+          "Speech recognition network error.",
 
         "language-not-supported":
           "Speech recognition does not support this language."
       };
 
-      if (problems[event.error]) {
-        listeningRequested = false;
+      setStatus(
+        errors[event.error] ||
+          `Voice error: ${event.error}`,
+        "error"
+      );
 
-        message(
-          problems[event.error],
-          "error"
-        );
+      // Do not automatically restart
+      // after a microphone or service error.
 
-        updateButton();
-      }
+      listening = false;
+
+      updateButtons();
     };
 
-    // ---------- 10. Recognition session ending ----------
+    // 17. Handle session ending
 
     session.onend = () => {
       if (recognition !== session) return;
 
       recognition = null;
 
-      commitCurrentSession();
+      const heardSpeech = Boolean(
+        currentSessionText()
+      );
 
-      if (finishing) {
-        finishing = false;
-        listeningRequested = false;
+      commitSession();
 
-        updateButton();
-        settleFinish(true);
+      if (stopping) {
+        completeStop(true);
+        return;
+      }
 
-      } else if (
-        listeningRequested &&
-        config.autoRestart
-      ) {
-        // A controlled restart helps avoid
-        // overlapping mobile recognition sessions.
+      if (!listening) {
+        updateButtons();
+        return;
+      }
 
-        message(
-          "Listening… You may continue speaking. Click Stop when finished.",
-          "loading"
+      // Browsers that require manual restart
+
+      if (!config.autoRestart) {
+        listening = false;
+        updateButtons();
+
+        setStatus(
+          "Recognition paused. Tap Start Speaking to continue."
         );
 
-        restartTimer = setTimeout(() => {
-          restartTimer = null;
-          startSession();
-        }, config.restartDelay);
-
-      } else {
-        // Some mobile browsers need another
-        // user action to begin the next session.
-
-        listeningRequested = false;
-        updateButton();
+        return;
       }
+
+      // Prevent endless restarts
+      // when no speech is detected.
+
+      silentSessions = heardSpeech
+        ? 0
+        : silentSessions + 1;
+
+      if (
+        silentSessions >= MAX_SILENT_SESSIONS
+      ) {
+        listening = false;
+        updateButtons();
+
+        setStatus(
+          "No speech detected. Tap Start Speaking to try again."
+        );
+
+        return;
+      }
+
+      setStatus(
+        "Listening… You may continue speaking.",
+        "loading"
+      );
+
+      clearRestart();
+
+      restartTimer = setTimeout(() => {
+        restartTimer = null;
+        startSession();
+      }, config.restartDelay);
     };
+
+    // 18. Activate recognition
 
     try {
       session.start();
-    } catch (err) {
+    } catch (error) {
       recognition = null;
-      listeningRequested = false;
-      finishing = false;
+      listening = false;
 
-      updateButton();
+      updateButtons();
 
-      message(
-        `Unable to start microphone: ${err.message}`,
+      setStatus(
+        `Could not start microphone: ${error.message}`,
         "error"
       );
-
-      settleFinish(false);
     }
   }
 
-  // ---------- 11. Start Speaking button ----------
+  // 19. Start Speaking button
 
   function startSpeaking() {
     if (
-      listeningRequested ||
-      finishing ||
-      locked
+      locked ||
+      listening ||
+      stopping
     ) {
       return;
     }
 
-    if (!Recognition) {
-      message(
-        "Speech recognition is unavailable in this browser.",
+    if (!SpeechRecognition) {
+      setStatus(
+        "Speech recognition is not supported in this browser.",
         "error"
       );
+
       return;
     }
 
+    clearRestart();
+
     baseText = input.value;
 
-    committedSpeech = "";
-    finalPart = "";
-    interimPart = "";
+    completedText = "";
+    sessionFinal = "";
+    sessionInterim = "";
 
-    listeningRequested = true;
+    silentSessions = 0;
+    listening = true;
 
-    updateButton();
+    updateButtons();
 
-    message(
-      "Starting microphone… Allow access if the browser asks.",
+    setStatus(
+      "Starting microphone…",
       "loading"
     );
 
     startSession();
   }
 
-  // ---------- 12. Stop recognition ----------
+  // 20. Stop before translating
 
   function finishBeforeTranslate() {
+    if (finishPromise) {
+      return finishPromise;
+    }
+
     if (
-      !listeningRequested &&
+      !listening &&
       !recognition &&
-      !finishing
+      restartTimer === null
     ) {
       return Promise.resolve(true);
     }
 
-    clearTimer();
+    listening = false;
+    stopping = true;
 
-    listeningRequested = false;
-    finishing = true;
+    clearRestart();
+    updateButtons();
 
-    updateButton();
+    finishPromise = new Promise(resolve => {
+      resolveFinish = resolve;
+    });
 
-    return new Promise(resolve => {
-      finishResolve = resolve;
+    if (!recognition) {
+      commitSession();
+      completeStop(true);
 
-      if (recognition) {
-        message(
-          "Finishing speech recognition before translating…",
-          "loading"
-        );
+      return finishPromise ||
+        Promise.resolve(true);
+    }
 
-        try {
-          recognition.stop();
-        } catch (_) {
-          recognition = null;
-          commitCurrentSession();
-          finishing = false;
+    try {
+      recognition.stop();
+    } catch (_) {
+      recognition = null;
 
-          updateButton();
-          settleFinish(true);
+      commitSession();
+      completeStop(true);
+    }
+
+    // Some browsers fail to fire onend.
+    // Do not leave Translate waiting forever.
+
+    if (stopping) {
+      stopTimer = setTimeout(() => {
+        const old = recognition;
+
+        recognition = null;
+
+        if (old) {
+          try {
+            old.abort();
+          } catch (_) {}
         }
 
-      } else {
-        commitCurrentSession();
-        finishing = false;
+        commitSession();
+        completeStop(true);
+      }, STOP_TIMEOUT_MS);
+    }
 
-        updateButton();
-        settleFinish(true);
-      }
-    });
+    return finishPromise ||
+      Promise.resolve(true);
   }
 
-  // ---------- 13. Clear or cancel recording ----------
+  // 21. Cancel voice recognition
 
   function cancelRecording() {
-    clearTimer();
+    clearRestart();
+    clearStopTimer();
 
-    listeningRequested = false;
-    finishing = false;
+    listening = false;
+    stopping = false;
 
-    sessionNumber++;
+    const old = recognition;
 
-    const session = recognition;
     recognition = null;
 
-    if (session) {
+    if (old) {
       try {
-        session.abort();
+        old.abort();
       } catch (_) {}
     }
 
     baseText = "";
-    committedSpeech = "";
-    finalPart = "";
-    interimPart = "";
+    completedText = "";
+    sessionFinal = "";
+    sessionInterim = "";
 
-    updateButton();
-    settleFinish(false);
+    silentSessions = 0;
+
+    completeStop(false);
   }
 
-  // ---------- 14. Button event handlers ----------
+  // 22. Connect Start Speaking button
 
   speakButton.addEventListener(
     "click",
     startSpeaking
   );
 
+  // 23. Connect Stop button
+
   stopButton?.addEventListener(
     "click",
     async () => {
-      if (
-        !listeningRequested ||
-        finishing
-      ) {
-        return;
-      }
+      if (!listening || stopping) return;
 
-      const completed =
-        await finishBeforeTranslate();
-
-      if (completed) {
-        message(
-          "Voice recognition stopped. You can edit the text or click Translate.",
+      if (await finishBeforeTranslate()) {
+        setStatus(
+          "Voice recognition stopped. Review text or tap Translate.",
           "success"
         );
-
-        // Do not automatically focus the textarea.
-        // On Android that would open the keyboard
-        // and cover the Translate button.
       }
     }
   );
+
+  // 24. Connect Enter Text button
 
   textButton?.addEventListener(
     "click",
-    () => {
-      if (listeningRequested) {
-        void finishBeforeTranslate();
+    async () => {
+      if (listening || stopping) {
+        await finishBeforeTranslate();
       }
+
+      // Move the cursor into the textarea
+      // when the user chooses Enter Text.
+
+      input.focus();
     }
   );
+
+  // 25. Show microphone privacy notice
 
   if (privacy) {
     privacy.hidden = false;
   }
 
-  updateButton();
+  updateButtons();
 
-  // ---------- 15. Interface for app.js ----------
+  // 26. Interface used by app.js
 
   window.nltVoice = {
     finishBeforeTranslate,
@@ -683,7 +782,7 @@
 
     lockModes(value) {
       locked = Boolean(value);
-      updateButton();
+      updateButtons();
     }
   };
 })();
