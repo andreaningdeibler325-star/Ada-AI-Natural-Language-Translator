@@ -1,4 +1,5 @@
 
+
 /*
  Ada's AI Natural Language Translator
  Voice recognition + automatic punctuation
