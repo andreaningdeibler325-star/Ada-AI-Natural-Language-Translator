@@ -258,7 +258,7 @@ function init() {
     el.source.add(new Option(name, code));
     el.target.add(new Option(name, code));
   });
-  el.target.value = "de"; // sensible default target
+  el.target.value = "en"; // sensible default target
 
   el.charMax.textContent = el.input.maxLength;
 
