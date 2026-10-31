@@ -40,10 +40,20 @@
     ko: "ko-KR",
     ar: "ar-SA",
     hi: "hi-IN",
-    ru: "ru-RU"
-  };
-
-  function settings() {
+    ru: "ru-RU",
+    te: 'te-IN', // Telugu
+    bn: 'bn-IN', // Bengali
+    ta: 'ta-IN', // Tamil
+    ur: 'ur-PK', // Urdu
+    pa: 'pa-IN', // Punjabi
+    mr: 'mr-IN', // Marathi
+    gu: 'gu-IN', // Gujarati
+    ml: 'ml-IN', // Malayalam
+    th: 'th-TH', // Thai
+    vi: 'vi-VN'  // Vietnamese
+};
+                   
+   function settings() {
     const ua = navigator.userAgent || "";
 
     const device = /Android/i.test(ua)
