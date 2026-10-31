@@ -39,6 +39,22 @@ const LANGUAGES = [
   { code: "ar", name: "Arabic" },
   { code: "hi", name: "Hindi" },
   { code: "ru", name: "Russian" },
+
+  { code: "te", name: "Telugu (తెలుగు)" },
+  { code: "bn", name: "Bengali (বাংলা)" },
+  { code: "ta", name: "Tamil (தமிழ்)" },
+  { code: "ur", name: "Urdu (اردو)" },
+  { code: "pa", name: "Punjabi (ਪੰਜਾਬੀ)" },
+  { code: "mr", name: "Marathi (मराठी)" },
+  { code: "gu", name: "Gujarati (ગુજરાતી)" },
+  { code: "ml", name: "Malayalam (മലയാളം)" },
+  { code: "th", name: "Thai (ไทย)" },
+  { code: "vi", name: "Vietnamese (Tiếng Việt)" },
+
+
+   
+
+   
 ];
 
 /* ---------- 2. DOM references ---------- */
