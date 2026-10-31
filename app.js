@@ -49,7 +49,7 @@ const LANGUAGES = [
   { code: "ml", name: "Malayalam (മലയാളം)" },
   { code: "th", name: "Thai (ไทย)" },
   { code: "vi", name: "Vietnamese (Tiếng Việt)" },
-  ];
+ ];
 
 /* ---------- 2. DOM references ---------- */
 
