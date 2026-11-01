@@ -32,6 +32,12 @@ const LANGUAGES = [
   { code: "de", name: "German" },
   { code: "fr", name: "French" },
   { code: "es", name: "Spanish" },
+  { code: "es-419", name: "Spanish (Latin America)" },
+  { code: "es-MX", name: "Spanish (Mexico)" },
+  { code: "es-SV", name: "Spanish (El Salvador)" },
+  { code: "es-ES", name: "Spanish (Spain)" },
+  { code: "es-US", name: "Spanish (United States)" },
+  { code: "es-CO", name: "Spanish (Colombia)" },
   { code: "it", name: "Italian" },
   { code: "pt", name: "Portuguese" },
   { code: "ja", name: "Japanese" },
@@ -49,12 +55,6 @@ const LANGUAGES = [
   { code: "ml", name: "Malayalam (മലയാളം)" },
   { code: "th", name: "Thai (ไทย)" },
   { code: "vi", name: "Vietnamese (Tiếng Việt)" },
-  { code: "es-419", name: "Spanish (Latin America)" },
-  { code: "es-MX", name: "Spanish (Mexico)" },
-  { code: "es-SV", name: "Spanish (El Salvador)" },
-  { code: "es-ES", name: "Spanish (Spain)" },
-  { code: "es-US", name: "Spanish (United States)" },
-  { code: "es-CO", name: "Spanish (Colombia)" },
  ];
 
 /* ---------- 2. DOM references ---------- */
