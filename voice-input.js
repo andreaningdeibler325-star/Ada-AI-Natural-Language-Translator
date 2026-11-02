@@ -27,37 +27,72 @@
     window.SpeechRecognition ||
     window.webkitSpeechRecognition;
 
-  const locales = {
-    en: "en-US",
-    zh: "zh-CN",
-    yue: "zh-HK",
-    de: "de-DE",
-    fr: "fr-FR",
-    es: "es-ES", 
-        "es-419": "es-MX", 
-        "es-MX": "es-MX", 
-        "es-SV": "es-SV", 
-        "es-ES": "es-ES",
-        "es-US": "es-US", 
-        "es-CO": "es-CO",      
-    it: "it-IT",
-    pt: "pt-PT",
-    ja: "ja-JP",
-    ko: "ko-KR",
-    ar: "ar-SA",
-    hi: "hi-IN",
-    ru: "ru-RU",
-    te: 'te-IN', // Telugu
-    bn: 'bn-IN', // Bengali
-    ta: 'ta-IN', // Tamil
-    ur: 'ur-PK', // Urdu
-    pa: 'pa-IN', // Punjabi
-    mr: 'mr-IN', // Marathi
-    gu: 'gu-IN', // Gujarati
-    ml: 'ml-IN', // Malayalam
-    th: 'th-TH', // Thai
-    vi: 'vi-VN'  // Vietnamese
+    
+const locales = {
+  ar: "ar-SA",
+  bn: "bn-IN",
+  bg: "bg-BG",
+  my: "my-MM",
+  yue: "zh-HK",
+  zh: "zh-CN",
+  co: "co-FR",
+  hr: "hr-HR",
+  cs: "cs-CZ",
+  da: "da-DK",
+  nl: "nl-NL",
+  en: "en-US",
+  fj: "fj-FJ",
+  fil: "fil-PH",
+  fi: "fi-FI",
+  fr: "fr-FR",
+  ka: "ka-GE",
+  de: "de-DE",
+  el: "el-GR",
+  gu: "gu-IN",
+  ht: "ht-HT",
+  ha: "ha-NG",
+  hi: "hi-IN",
+  nan: "nan-TW",
+  id: "id-ID",
+  ga: "ga-IE",
+  it: "it-IT",
+  ja: "ja-JP",
+  km: "km-KH",
+  ko: "ko-KR",
+  lo: "lo-LA",
+  ms: "ms-MY",
+  ml: "ml-IN",
+  mt: "mt-MT",
+  mr: "mr-IN",
+  mn: "mn-MN",
+  fa: "fa-IR",
+  pl: "pl-PL",
+  pt: "pt-PT",
+  pa: "pa-IN",
+  ro: "ro-RO",
+  ru: "ru-RU",
+  sk: "sk-SK",
+  es: "es-ES",
+  "es-419": "es-MX",
+  "es-CO": "es-CO",
+  "es-MX": "es-MX",
+  "es-PE": "es-PE",
+  "es-SV": "es-SV",
+  "es-ES": "es-ES",
+  "es-US": "es-US",
+  sw: "sw-KE",
+  sv: "sv-SE",
+  ta: "ta-IN",
+  te: "te-IN",
+  th: "th-TH",
+  bo: "bo-CN",
+  to: "to-TO",
+  tr: "tr-TR",
+  uk: "uk-UA",
+  ur: "ur-PK",
+  vi: "vi-VN"
 };
+
                    
    function settings() {
     const ua = navigator.userAgent || "";
